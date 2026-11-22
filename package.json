@@ -1,0 +1,46 @@
+{
+  "name": "leavenotrace",
+  "version": "0.1.0",
+  "description": "Fail the test that leaves a mess: leaked env vars, globals, mocks, timers, servers and sockets, with the line that created them. For vitest, jest, mocha and node:test.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Anime5hka",
+  "engines": {
+    "node": ">=20.6"
+  },
+  "exports": {
+    ".": "./src/core.cjs",
+    "./vitest": "./src/vitest.js",
+    "./jest": "./src/jest.cjs",
+    "./mocha": "./src/mocha.cjs",
+    "./node": "./src/node.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "test": "node --test --test-concurrency=1 test/*.test.js"
+  },
+  "keywords": [
+    "testing",
+    "flaky-tests",
+    "test-pollution",
+    "vitest",
+    "jest",
+    "mocha",
+    "node-test",
+    "leak",
+    "isolation",
+    "order-dependent"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Anime5hka/leavenotrace.git"
+  },
+  "devDependencies": {
+    "jest": "^30.5.2",
+    "mocha": "^12.0.3",
+    "vitest": "^5.1.1"
+  }
+}

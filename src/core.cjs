@@ -16,19 +16,27 @@ const IGNORE = [
   /^globalThis\[Symbol\((jest|JEST)/, /^globalThis\.__coverage__$/, /^globalThis\.__VUE/,
   /^globalThis\.__leavenotrace/, /^globalThis\[Symbol\(leavenotrace/,
   /^globalThis\.(expect|jasmine|__mocha_id__)$/,
+  // Created lazily by node itself (fetch, http) the first time anything uses them.
+  /^globalThis\[Symbol\(undici\./,
   /^process\.env\.(VITEST_|JEST_WORKER_ID$|NODE_TEST_CONTEXT$|NODE_V8_COVERAGE$)/,
   /^process\.on\((warning|newListener|removeListener)\)/,
 ];
 
 // ---------------------------------------------------------------- where code came from
 
-/** File:line:col of the first stack frame in the user's code (not node internals, not node_modules). */
-function userSite(stack) {
+/**
+ * File:line of the first stack frame in the user's code (not node internals, not node_modules).
+ * With `direct`, only if the user's code is the direct caller: a timer that node's http client
+ * or a library schedules on the user's behalf is theirs to clean up, not the test's.
+ */
+function userSite(stack, direct = false) {
   for (const line of String(stack).split('\n').slice(1)) {
+    if (line.includes(SELF)) continue;
     const loc = frameLocation(line);
-    if (!loc) continue;
+    if (!loc) { if (direct && /\(?node:/.test(line)) return null; continue; }
     let file = loc.file.startsWith('file://') ? fileURLToPath(loc.file) : loc.file;
-    if (file.startsWith(SELF) || /[\\/]node_modules[\\/]/.test(file)) continue;
+    if (file.startsWith(SELF)) continue;
+    if (/[\\/]node_modules[\\/]/.test(file)) { if (direct) return null; continue; }
     if (file.startsWith(CWD + path.sep)) file = file.slice(CWD.length + 1);
     return `${file}:${loc.line}`;
   }
@@ -43,12 +51,12 @@ function frameLocation(line) {
   return { file: m[1], line: Number(m[2]), col: Number(m[3]) };
 }
 
-function here() {
+function here(direct = false) {
   const limit = Error.stackTraceLimit;
   Error.stackTraceLimit = 40;
   const stack = new Error().stack;
   Error.stackTraceLimit = limit;
-  return userSite(stack);
+  return userSite(stack, direct);
 }
 
 // ---------------------------------------------------------------- snapshots
@@ -114,7 +122,7 @@ const safe = (fn) => { try { return fn(); } catch { return undefined; } };
 
 function show(v) {
   if (v === undefined) return 'undefined';
-  if (typeof v === 'function') return v.name ? `function ${v.name}` : 'a function';
+  if (typeof v === 'function') return v.name ? `function ${v.name}` : 'an anonymous function';
   if (typeof v === 'string') return JSON.stringify(v.length > 60 ? `${v.slice(0, 57)}...` : v);
   if (v && typeof v === 'object') return v.constructor && v.constructor.name ? `a ${v.constructor.name}` : 'an object';
   return String(v);
@@ -138,7 +146,7 @@ function diff(before, after) {
     else if (b === undefined) out.push({ label, what: `deleted (was ${show(a)})` });
     else out.push({ label, what: `changed to ${show(b)} (was ${show(a)})` });
   }
-  if (before.cwd !== after.cwd) out.push({ label: 'process.cwd()', what: `changed to ${show(after.cwd)} (was ${show(before.cwd)})` });
+  if (before.cwd !== after.cwd) out.push({ label: 'process.cwd()', what: `changed to ${JSON.stringify(after.cwd)} (was ${JSON.stringify(before.cwd)})` });
   if (before.exitCode !== after.exitCode) out.push({ label: 'process.exitCode', what: `set to ${show(after.exitCode)}` });
 
   for (const [label, b] of after.props) {
@@ -161,7 +169,21 @@ function diff(before, after) {
     if (added) out.push({ label, what: `${added} listener${added > 1 ? 's' : ''} added and not removed` });
     if (removed) out.push({ label, what: `${removed} listener${removed > 1 ? 's' : ''} removed` });
   }
-  return out.filter((f) => !IGNORE.some((re) => re.test(f.label)));
+  return collapseFakeTimers(after, out).filter((f) => !IGNORE.some((re) => re.test(f.label)));
+}
+
+// Fake timers (@sinonjs/fake-timers, used by vitest and jest) replace Date, timers, performance,
+// Intl.DateTimeFormat and process.hrtime all at once. One finding says it better than eighty.
+const FAKED = /^(globalThis\.(Date|Intl|performance|setTimeout|clearTimeout|setInterval|clearInterval|setImmediate|clearImmediate|queueMicrotask|requestAnimationFrame|cancelAnimationFrame|requestIdleCallback|cancelIdleCallback)$|(Date|Intl|performance)(\.|\[)|Date\.prototype|process\.(hrtime|nextTick|uptime)$)/;
+function collapseFakeTimers(after, findings) {
+  const date = after.props.get('globalThis.Date')?.value;
+  const timeout = after.props.get('globalThis.setTimeout')?.value;
+  const fake = (date && date.isFake === true) || (timeout && (timeout.clock || timeout._isMockFunction === undefined && /^fake/i.test(timeout.name)));
+  if (!fake || !findings.some((f) => FAKED.test(f.label))) return findings;
+  return [
+    { label: 'fake timers', what: 'still installed (useFakeTimers() without useRealTimers())' },
+    ...findings.filter((f) => !FAKED.test(f.label)),
+  ];
 }
 
 function describeReplacement(a, b) {
@@ -205,7 +227,7 @@ function install(g) {
   if (typeof realSetTimeout === 'function') {
     const setTimeout = function setTimeout(fn, ms, ...args) {
       const t = realSetTimeout.call(this, fn, ms, ...args);
-      const site = here();
+      const site = here(true);
       if (site && t && typeof t === 'object') {
         track('setTimeout', () => `setTimeout(…, ${Number(ms) || 0}) still pending`, () => !t._destroyed, site);
       }
@@ -217,7 +239,7 @@ function install(g) {
   if (typeof realSetInterval === 'function') {
     const setInterval = function setInterval(fn, ms, ...args) {
       const t = realSetInterval.call(this, fn, ms, ...args);
-      const site = here();
+      const site = here(true);
       if (site && t && typeof t === 'object') {
         track('setInterval', () => `setInterval(…, ${Number(ms) || 0}) still running`, () => !t._destroyed, site);
       }
@@ -342,6 +364,8 @@ class LeftATrace extends Error {
     super(`this test left a trace:\n${format(findings)}\n\nClean it up in the test (or an afterEach), or see https://github.com/Anime5hka/leavenotrace#ignoring`);
     this.name = 'LeftATrace';
     this.findings = findings;
+    // The stack would only point at this file; the useful locations are in the message.
+    this.stack = `${this.name}: ${this.message}`;
   }
 }
 
