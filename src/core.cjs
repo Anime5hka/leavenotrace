@@ -86,11 +86,18 @@ function watched(g) {
     if (g[name] && g[name].prototype) list.push([`${name}.prototype`, g[name].prototype]);
   }
   list.push(['process', process]);
+  return list.concat(nodeModules());
+}
+
+let modulesCache = null;
+function nodeModules() {
+  if (modulesCache) return modulesCache;
+  modulesCache = [];
   for (const m of MODULES) {
-    try { list.push([m, require(`node:${m}`)]); } catch {}
+    try { modulesCache.push([m, require(`node:${m}`)]); } catch {}
   }
-  try { list.push(['EventEmitter.prototype', require('node:events').EventEmitter.prototype]); } catch {}
-  return list;
+  try { modulesCache.push(['EventEmitter.prototype', require('node:events').EventEmitter.prototype]); } catch {}
+  return modulesCache;
 }
 
 function keyLabel(owner, key) {
@@ -100,22 +107,24 @@ function keyLabel(owner, key) {
 
 /** Identity of a property, without ever calling a getter. */
 function slot(obj, key) {
-  const d = Object.getOwnPropertyDescriptor(obj, key);
-  if (!d) return undefined;
-  return 'value' in d ? { value: d.value } : { get: d.get, set: d.set };
+  return Object.getOwnPropertyDescriptor(obj, key);
 }
 
 function snapshot(g) {
+  // owner label -> Map(key -> property descriptor). Labels for keys are only built for changes.
   const props = new Map();
   for (const [owner, obj] of watched(g)) {
     let keys;
     try { keys = Reflect.ownKeys(obj); } catch { continue; }
+    const slots = new Map();
     for (const key of keys) {
-      // process.* data properties (env, title, exitCode...) are handled separately or change on their own.
-      if (owner === 'process' && typeof slot(obj, key)?.value !== 'function') continue;
       if (owner === 'globalThis' && (key === 'process' || key === 'global')) continue;
-      props.set(keyLabel(owner, key), slot(obj, key));
+      const d = slot(obj, key);
+      // process.* data properties (env, title, exitCode...) are handled separately or change on their own.
+      if (owner === 'process' && typeof d?.value !== 'function') continue;
+      slots.set(key, d);
     }
+    props.set(owner, slots);
   }
   const listeners = new Map();
   for (const ev of process.eventNames()) listeners.set(ev, process.rawListeners(ev).slice());
@@ -159,14 +168,18 @@ function diff(before, after) {
   if (before.cwd !== after.cwd) out.push({ label: 'process.cwd()', what: `changed to ${JSON.stringify(after.cwd)} (was ${JSON.stringify(before.cwd)})` });
   if (before.exitCode !== after.exitCode) out.push({ label: 'process.exitCode', what: `set to ${show(after.exitCode)}` });
 
-  for (const [label, b] of after.props) {
-    const a = before.props.get(label);
-    if (sameSlot(a, b)) continue;
-    if (a === undefined) out.push({ label, what: `added (${show(b.value ?? b.get)})` });
-    else out.push({ label, what: describeReplacement(a, b) });
-  }
-  for (const [label, a] of before.props) {
-    if (!after.props.has(label)) out.push({ label, what: `deleted (was ${show(a.value ?? a.get)})` });
+  for (const [owner, bs] of after.props) {
+    const as = before.props.get(owner) || new Map();
+    for (const [key, b] of bs) {
+      const a = as.get(key);
+      if (sameSlot(a, b)) continue;
+      const label = keyLabel(owner, key);
+      if (a === undefined) out.push({ label, what: `added (${show(b.value ?? b.get)})` });
+      else out.push({ label, what: describeReplacement(a, b) });
+    }
+    for (const [key, a] of as) {
+      if (!bs.has(key)) out.push({ label: keyLabel(owner, key), what: `deleted (was ${show(a.value ?? a.get)})` });
+    }
   }
 
   const events = new Set([...before.listeners.keys(), ...after.listeners.keys()]);
@@ -186,8 +199,8 @@ function diff(before, after) {
 // Intl.DateTimeFormat and process.hrtime all at once. One finding says it better than eighty.
 const FAKED = /^(globalThis\.(Date|Intl|performance|setTimeout|clearTimeout|setInterval|clearInterval|setImmediate|clearImmediate|queueMicrotask|requestAnimationFrame|cancelAnimationFrame|requestIdleCallback|cancelIdleCallback)$|(Date|Intl|performance)(\.|\[)|Date\.prototype|timers\.|process\.(hrtime|nextTick|uptime)$)/;
 function collapseFakeTimers(after, findings) {
-  const date = after.props.get('globalThis.Date')?.value;
-  const timeout = after.props.get('globalThis.setTimeout')?.value;
+  const date = after.props.get('globalThis')?.get('Date')?.value;
+  const timeout = after.props.get('globalThis')?.get('setTimeout')?.value;
   const fake = (date && (date.isFake === true || date.isMock === true)) || (timeout && (timeout.clock || timeout._isMockFunction === undefined && /^fake/i.test(timeout.name)));
   if (!fake || !findings.some((f) => FAKED.test(f.label))) return findings;
   return [
