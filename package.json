@@ -1,6 +1,6 @@
 {
   "name": "leavenotrace",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Fail the test that leaves a mess: leaked env vars, globals, mocks, timers, servers and sockets, with the line that created them. For vitest, jest, mocha and node:test.",
   "type": "module",
   "license": "MIT",

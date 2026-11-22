@@ -104,3 +104,19 @@ test('added objects are named with the right article', () => {
     assert.ok(whats.includes('added (a Map)'), whats.join('; '));
   } finally { delete globalThis.__lntObj; delete globalThis.__lntMap; }
 });
+
+test('GitHub Actions: annotate the test line that created a leftover, else its site, else the test file', async () => {
+  const { location, annotations, markdown } = await import('../src/github.js');
+  assert.deepEqual(location({ site: 'shop.js:15 (from catalog.test.js:18)' }, 'catalog.test.js'), { file: 'catalog.test.js', line: 18 });
+  assert.deepEqual(location({ site: 'server.js:7:3' }, 'a.test.js'), { file: 'server.js', line: 7 });
+  assert.deepEqual(location({}, 'a.test.js'), { file: 'a.test.js', line: null });
+  const reports = [{ test: 'polls, every second', file: 'catalog.test.js', findings: [
+    { label: 'setInterval', what: 'still running (every 1000 ms)', site: 'shop.js:15 (from catalog.test.js:18)', hint: 'clearInterval() it in afterEach' },
+    { label: 'process.env.CURRENCY', what: 'set to "EUR" (was unset)' },
+  ] }];
+  assert.equal(annotations(reports, '/repo/pkg', '/repo'),
+    '::error file=pkg/catalog.test.js,line=18,title=leavenotrace%3A "polls%2C every second" leaves setInterval behind::setInterval still running (every 1000 ms). Fix: clearInterval() it in afterEach.\n'
+    + '::error file=pkg/catalog.test.js,title=leavenotrace%3A "polls%2C every second" leaves process.env.CURRENCY behind::process.env.CURRENCY set to "EUR" (was unset).\n');
+  assert.match(markdown(reports, ['node', '--test']), /1 test left a trace[\s\S]*\| polls, every second \| `catalog\.test\.js` \| `setInterval` still running/);
+  assert.match(markdown([], ['node', '--test']), /Every test cleaned up after itself/);
+});

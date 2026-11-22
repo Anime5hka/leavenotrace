@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.0 (2026-11-22)
+
+- On GitHub Actions: the report goes to the job summary, and each leftover gets an error annotation on the test line that created it (or the test file when the line isn't known).
+- `--markdown`: the report as Markdown.
+
 ## 0.1.0 (2026-11-22)
 
 First release.

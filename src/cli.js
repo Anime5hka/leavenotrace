@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os';
 import { join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { markdown, publish } from './github.js';
+
 const SRC = fileURLToPath(new URL('.', import.meta.url));
 
 const HELP = `leavenotrace: find the tests that leave a mess behind
@@ -15,6 +17,10 @@ Usage: leavenotrace [options] -- <test command...>
   --fail      make leaky tests fail (default: report them and keep the test result)
   --verbose   show the test command's own output
   --json      print the findings as JSON
+  --markdown  print the findings as a Markdown report (for a PR comment)
+
+On GitHub Actions, the report also goes to the job summary, with an error
+annotation on the line that created each leftover.
 
 Works out of the box with node --test and mocha. For vitest and jest, add one line to
 your config instead (see https://github.com/Anime5hka/leavenotrace#setup).
@@ -28,11 +34,12 @@ export function parseArgs(argv) {
   const dash = argv.indexOf('--');
   const own = dash === -1 ? argv : argv.slice(0, dash);
   const command = dash === -1 ? [] : argv.slice(dash + 1);
-  const o = { fail: false, verbose: false, json: false, help: false };
+  const o = { fail: false, verbose: false, json: false, markdown: false, help: false };
   for (const a of own) {
     if (a === '--fail') o.fail = true;
     else if (a === '--verbose') o.verbose = true;
     else if (a === '--json') o.json = true;
+    else if (a === '--markdown') o.markdown = true;
     else if (a === '-h' || a === '--help') o.help = true;
     else throw new Error(`unknown option ${a} (the test command goes after --)`);
   }
@@ -51,7 +58,7 @@ export function detectRunner(command) {
 const CODES = { red: 31, green: 32, yellow: 33, cyan: 36, gray: 90, bold: 1 };
 const painter = (on) => (style, s) => (on ? `\x1b[${CODES[style]}m${s}\x1b[0m` : s);
 
-export async function main(argv, { out = process.stdout, err = process.stderr, color } = {}) {
+export async function main(argv, { out = process.stdout, err = process.stderr, color, cwd = process.cwd(), env: procEnv = process.env } = {}) {
   let parsed;
   try { parsed = parseArgs(argv); } catch (e) { err.write(`leavenotrace: ${e.message}\n\n${HELP}\n`); return 2; }
   const { o, command } = parsed;
@@ -74,11 +81,12 @@ export async function main(argv, { out = process.stdout, err = process.stderr, c
   };
   delete env.NODE_TEST_CONTEXT;
 
-  if (!o.json) out.write(`${c('bold', 'leavenotrace')} ${c('gray', '·')} ${command.join(' ')}\n`);
+  const quiet = o.json || o.markdown;
+  if (!quiet) out.write(`${c('bold', 'leavenotrace')} ${c('gray', '·')} ${command.join(' ')}\n`);
   const code = await new Promise((resolve) => {
     const child = spawn(command[0], args, {
       env,
-      stdio: ['inherit', o.verbose && !o.json ? 'inherit' : 'pipe', o.verbose && !o.json ? 'inherit' : 'pipe'],
+      stdio: ['inherit', o.verbose && !quiet ? 'inherit' : 'pipe', o.verbose && !quiet ? 'inherit' : 'pipe'],
       shell: process.platform === 'win32',
     });
     let tail = '';
@@ -93,8 +101,14 @@ export async function main(argv, { out = process.stdout, err = process.stderr, c
     : [];
   rmSync(dir, { recursive: true, force: true });
 
+  // With --json / --markdown stdout is the report; the runner reads workflow commands from stderr too.
+  publish(reports, command, { env: procEnv, cwd, stream: quiet ? err : out });
   if (o.json) {
     out.write(`${JSON.stringify({ command, exitCode: code.code, leaky: reports }, null, 2)}\n`);
+    return reports.length ? 1 : code.code;
+  }
+  if (o.markdown) {
+    out.write(markdown(reports, command));
     return reports.length ? 1 : code.code;
   }
 

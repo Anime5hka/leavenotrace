@@ -36,6 +36,7 @@ No victim test needed, no bisection, no re-runs. Every trace comes with a fix fo
   <a href="#quick-start">Quick start</a> ·
   <a href="#setup">Setup</a> ·
   <a href="#what-counts-as-a-trace">What counts as a trace</a> ·
+  <a href="#in-ci">In CI</a> ·
   <a href="#how-it-compares">How it compares</a> ·
   <a href="#ignoring">Ignoring</a> ·
   <a href="#how-it-works">How it works</a> ·
@@ -111,6 +112,16 @@ A leaked interval or server keeps Node running after the last test: `node --test
 
 Once leavenotrace has reported a leaked timer, server (with its open connections), socket or child process, it `unref()`s it, so the process can exit normally. You get the name and line of the leak instead of a hang.
 
+## In CI
+
+Run it as a step; there is nothing to configure. On GitHub Actions, leavenotrace puts its report in the **job summary** and adds an **error annotation on the test line that created each leftover**, so a PR that adds a leaky test shows it in *Files changed*:
+
+```yaml
+- run: npx github:Anime5hka/leavenotrace -- npm test
+```
+
+`--markdown` prints the same report as Markdown, ready for a PR comment. `--json` is for scripts.
+
 ## How it compares
 
 | | Catches the leak in the test that caused it | Without a failing victim | Env, globals, mocks, prototypes | Timers, servers, sockets | Line that created it |
@@ -166,7 +177,7 @@ The runners' own globals (vitest, jest, mocha, node:test internals, coverage cou
 - [ ] jsdom / happy-dom: DOM nodes left in `document.body`, `localStorage`, cookies, `window` listeners
 - [ ] Unhandled promise rejections and still-pending promises created by a test
 - [x] Fix hints for each trace, specific to the runner
-- [ ] A GitHub Action that annotates the leaky test lines in a PR
+- [x] GitHub Actions: job summary and an error annotation on the line that created each leftover (v0.2.0)
 
 ## See also
 
