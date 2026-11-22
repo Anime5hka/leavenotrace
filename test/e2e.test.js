@@ -72,6 +72,14 @@ const RUNNERS = {
   'node:test': [process.execPath, ['--import', 'leavenotrace/node', '--test', '--test-concurrency=1'], 'test/fixtures/node'],
 };
 
+// The hint for an unrestored spy names the runner's own way to restore mocks.
+const HINT = {
+  vitest: /vi\.restoreAllMocks\(\)/,
+  jest: /jest\.restoreAllMocks\(\)/,
+  mocha: /keep the original and put it back/, // the fixture replaces it by hand, no sinon
+  'node:test': /mock\.restoreAll\(\)/,
+};
+
 for (const [name, [cmd, args, cwd]] of Object.entries(RUNNERS)) {
   test(`${name}: blames each leaky test for exactly what it left, and nothing else`, async () => {
     const r = await run(cmd, args, join(root, cwd));
@@ -82,6 +90,12 @@ for (const [name, [cmd, args, cwd]] of Object.entries(RUNNERS)) {
     const got = blamed(r.reports);
     for (const k of Object.keys(expected)) expected[k] = [...expected[k]].sort();
     assert.deepEqual(got, expected, r.output.slice(-3000));
+    // The failure message lists each trace on its own line (format)...
+    assert.match(r.output, /process\.env\.API_URL {2}set to "http:\/\/localhost:4010" \(was unset\)/);
+    // ...with a fix hint for this runner (setRunner).
+    const spy = r.reports.flatMap((x) => x.findings).find((f) => f.label === 'fs.readFileSync');
+    assert.match(spy.hint, HINT[name]);
+    assert.match(r.output, HINT[name]);
   });
 
   test(`${name}: warn mode reports the same and passes`, async () => {
