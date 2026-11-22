@@ -19,7 +19,8 @@ if (!orchestrator && !globalThis.__leavenotraceNode) {
   let depth = 0;
   let lastRoot = null;
   const check = (t) => {
-    const file = process.argv[1] ? relative(cwd, process.argv[1]) : undefined;
+    const path = t?.filePath ?? process.argv[1];
+    const file = path ? relative(cwd, path.startsWith('file:') ? new URL(path).pathname : path) : undefined;
     core.report(t?.fullName ?? t?.name, core.finish(globalThis), file);
   };
   const realAfterEach = nt.afterEach;

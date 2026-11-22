@@ -30,18 +30,28 @@ const IGNORE = [
  * or a library schedules on the user's behalf is theirs to clean up, not the test's.
  */
 function userSite(stack, direct = false) {
+  let first = null;
   for (const line of String(stack).split('\n').slice(1)) {
     if (line.includes(SELF)) continue;
     const loc = frameLocation(line);
-    if (!loc) { if (direct && /\(?node:/.test(line)) return null; continue; }
+    if (!loc) { if (direct && !first && /\(?node:/.test(line)) return null; continue; }
     let file = loc.file.startsWith('file://') ? fileURLToPath(loc.file) : loc.file;
     if (file.startsWith(SELF)) continue;
-    if (/[\\/]node_modules[\\/]/.test(file)) { if (direct) return null; continue; }
+    if (/[\\/]node_modules[\\/]/.test(file)) { if (direct && !first) return null; continue; }
     if (file.startsWith(CWD + path.sep)) file = file.slice(CWD.length + 1);
-    return `${file}:${loc.line}`;
+    const here = `${file}:${loc.line}`;
+    if (!first) {
+      first = { file, here };
+      if (TEST_FILE.test(file)) return here;
+    } else if (file !== first.file && TEST_FILE.test(file)) {
+      // Created in your code, on behalf of a test: name both.
+      return `${first.here} (from ${here})`;
+    }
   }
-  return null;
+  return first ? first.here : null;
 }
+
+const TEST_FILE = /(\.|_|-)(test|spec)\.[cm]?[jt]sx?$|[\\/]__tests__[\\/]|^tests?[\\/]/;
 
 function frameLocation(line) {
   const text = line.trim().replace(/^at\s+/, '');
@@ -229,7 +239,7 @@ function install(g) {
       const t = realSetTimeout.call(this, fn, ms, ...args);
       const site = here(true);
       if (site && t && typeof t === 'object') {
-        track('setTimeout', () => `setTimeout(…, ${Number(ms) || 0}) still pending`, () => !t._destroyed, site);
+        track('setTimeout', () => `still pending (a ${Number(ms) || 0} ms timeout)`, () => !t._destroyed, site);
       }
       return t;
     };
@@ -241,7 +251,7 @@ function install(g) {
       const t = realSetInterval.call(this, fn, ms, ...args);
       const site = here(true);
       if (site && t && typeof t === 'object') {
-        track('setInterval', () => `setInterval(…, ${Number(ms) || 0}) still running`, () => !t._destroyed, site);
+        track('setInterval', () => `still running (every ${Number(ms) || 0} ms)`, () => !t._destroyed, site);
       }
       return t;
     };
@@ -264,7 +274,7 @@ function installNode() {
       const server = this;
       track('server', () => {
         const a = safe(() => server.address());
-        return `server still listening${a && typeof a === 'object' ? ` on port ${a.port}` : a ? ` on ${a}` : ''}`;
+        return `still listening${a && typeof a === 'object' ? ` on port ${a.port}` : a ? ` on ${a}` : ''}`;
       }, () => server.listening, site);
     }
     return realListen.apply(this, args);
@@ -278,7 +288,7 @@ function installNode() {
       const socket = this;
       track('socket', () => {
         const where = socket.remotePort ? ` to port ${socket.remotePort}` : '';
-        return `socket${where} still open`;
+        return `still open${where}`;
       }, () => !socket.destroyed, site);
     }
     return realConnect.apply(this, args);
@@ -289,7 +299,7 @@ function installNode() {
     const r = realSpawn.call(this, options);
     const child = this;
     const site = here();
-    track('child process', () => `child process ${child.spawnfile ?? ''} (pid ${child.pid}) still running`,
+    track('child process', () => `still running (${child.spawnfile ?? ''}, pid ${child.pid})`,
       () => child.exitCode === null && child.signalCode === null && !child.killed, site);
     return r;
   };
@@ -299,7 +309,7 @@ function installNode() {
     const w = realWatch.apply(this, args);
     let closed = false;
     w.once('close', () => { closed = true; });
-    track('fs.watch', () => `fs.watch(${show(String(args[0]))}) still watching`, () => !closed, here());
+    track('fs.watch', () => `still watching ${show(String(args[0]))}`, () => !closed, here());
     return w;
   };
   const { syncBuiltinESMExports } = require('node:module');
@@ -369,8 +379,11 @@ class LeftATrace extends Error {
   }
 }
 
-/** 'fail' (default): the leaking test fails. 'warn': report to stderr and pass. */
-const mode = () => (process.env.LEAVENOTRACE === 'warn' ? 'warn' : 'fail');
+/**
+ * 'fail' (default): the leaking test fails. 'warn': report to stderr and pass.
+ * 'quiet': only write LEAVENOTRACE_REPORT (the CLI prints a summary at the end).
+ */
+const mode = () => (['warn', 'quiet'].includes(process.env.LEAVENOTRACE) ? process.env.LEAVENOTRACE : 'fail');
 
 function report(testName, findings, file) {
   if (!findings.length) return;
@@ -381,6 +394,7 @@ function report(testName, findings, file) {
     } catch {}
   }
   if (mode() === 'fail') throw new LeftATrace(findings);
+  if (mode() === 'quiet') return;
   process.stderr.write(`\n[leavenotrace] ${testName ? `"${testName}"` : 'a test'}${file ? ` (${file})` : ''} left a trace:\n${format(findings)}\n`);
 }
 
