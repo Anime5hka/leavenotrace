@@ -40,7 +40,11 @@ function run(cmd, args, cwd, env = {}) {
     let output = '';
     child.stdout.on('data', (d) => { output += d; });
     child.stderr.on('data', (d) => { output += d; });
+    // The fixtures leak timers, servers and child processes on purpose; once reported they are
+    // unref'd, so the runner must exit on its own (no --forceExit). Fail instead of hanging.
+    const hang = setTimeout(() => { output += '\n[e2e] did not exit within 20 s: leaked handles keep it alive'; child.kill('SIGKILL'); }, 20_000);
     child.on('close', (code) => {
+      clearTimeout(hang);
       const reports = existsSync(report)
         ? readFileSync(report, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l))
         : [];
@@ -71,6 +75,7 @@ const RUNNERS = {
 for (const [name, [cmd, args, cwd]] of Object.entries(RUNNERS)) {
   test(`${name}: blames each leaky test for exactly what it left, and nothing else`, async () => {
     const r = await run(cmd, args, join(root, cwd));
+    assert.doesNotMatch(r.output, /did not exit within/, r.output.slice(-3000));
     assert.notEqual(r.code, 0, 'leaky tests must fail the run');
     const expected = { ...EXPECTED };
     if (name === 'mocha') delete expected['fake timers']; // no built-in fake timers
