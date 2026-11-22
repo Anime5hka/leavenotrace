@@ -2,6 +2,7 @@
 // Setup-file hooks run first before a test and last after it (sequence.hooks = 'stack').
 import { beforeEach, afterEach } from 'vitest';
 import core from './core.cjs';
+core.setRunner('vitest');
 
 beforeEach(() => { core.start(globalThis); });
 afterEach((ctx) => {

@@ -9,4 +9,5 @@ First release.
 - Tracks timers, servers, sockets, child processes and `fs.watch` back to the line that created them (and the test line that called it).
 - Leaked handles are `unref()`ed once reported, so a leaky suite no longer hangs `node --test`, mocha or jest.
 - Adapters for vitest, jest, mocha and node:test; modes `fail` / `warn` / `quiet`; JSON-lines report; ignore list.
+- A fix hint for every trace, specific to the runner (`vi.restoreAllMocks()`, `restoreMocks: true`, `mock.restoreAll()`, `vi.stubEnv()`...).
 - CLI: `npx leavenotrace -- <test command>` prints a per-file summary.

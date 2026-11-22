@@ -401,9 +401,63 @@ function format(findings) {
   return findings.map((f) => `  ${f.label.padEnd(width)}  ${f.what}${f.site ? `, created at ${f.site}` : ''}`).join('\n');
 }
 
+// Which runner loaded us (set by the adapters), for runner-specific fix hints.
+let runner = null;
+const setRunner = (name) => { runner = name; };
+
+const RESTORE_MOCKS = {
+  vitest: 'vi.restoreAllMocks() in afterEach, or restoreMocks: true in the vitest config',
+  jest: 'jest.restoreAllMocks() in afterEach, or restoreMocks: true in the jest config',
+  node: 'mock.restoreAll() in afterEach (or t.mock, which restores itself)',
+};
+const REAL_TIMERS = {
+  vitest: 'vi.useRealTimers() in afterEach',
+  jest: 'jest.useRealTimers() in afterEach',
+  node: 'mock.timers.reset() in afterEach (or t.mock.timers, which resets itself)',
+};
+
+/** One line on how to clean up after a finding, or undefined. */
+function hint(f, r = runner) {
+  const l = f.label;
+  if (l.startsWith('process.env.')) {
+    return r === 'vitest' ? 'set it with vi.stubEnv() and add unstubEnvs: true to the vitest config'
+      : 'save the old value and restore it in afterEach (delete it if it was unset)';
+  }
+  if (l === 'process.cwd()') return 'process.chdir() back to the old directory in afterEach';
+  if (l === 'process.exitCode') return 'reset process.exitCode = undefined in afterEach';
+  if (l === 'fake timers' || /fake timers/.test(f.what)) return REAL_TIMERS[r] ?? 'restore real timers in afterEach (clock.uninstall() / useRealTimers())';
+  if (/sinon stub/.test(f.what)) return 'sinon.restore() in afterEach';
+  if (/mock that was never restored/.test(f.what)) return RESTORE_MOCKS[r] ?? 'restore all mocks and spies in afterEach';
+  if (l === 'setInterval') return 'keep the timer and clearInterval() it in afterEach, or have the code return a stop function';
+  if (l === 'setTimeout') return 'keep the timer and clearTimeout() it in afterEach, or await it';
+  if (l === 'server') return 'await new Promise((done) => server.close(done)) in afterEach';
+  if (l === 'socket') return 'socket.destroy() (or client.end() / pool.end()) in afterEach';
+  if (l === 'child process') return 'child.kill() in afterEach, or wait for it to exit';
+  if (l === 'fs.watch') return 'watcher.close() in afterEach';
+  if (l.startsWith('process.on(')) return 'process.off(event, listener) in afterEach';
+  if (/\.prototype[.[]/.test(l)) return 'avoid patching built-in prototypes in tests; if you must, delete or restore it in afterEach';
+  if (l.startsWith('globalThis') && /^added/.test(f.what)) {
+    return r === 'vitest' ? 'set it with vi.stubGlobal() and add unstubGlobals: true to the vitest config'
+      : `delete ${l} in afterEach`;
+  }
+  if (/^(replaced|changed|deleted)/.test(f.what)) return 'keep the original and put it back in afterEach';
+  return undefined;
+}
+
+/** The distinct fix hints for a list of findings, as "How to fix" lines. */
+function hints(findings) {
+  const seen = new Map();
+  for (const f of findings) {
+    const h = hint(f);
+    if (h && !seen.has(h)) seen.set(h, f.label);
+  }
+  return [...seen].map(([h, label]) => `  ${label}: ${h}`).join('\n');
+}
+
 class LeftATrace extends Error {
   constructor(findings) {
-    super(`this test left a trace:\n${format(findings)}\n\nClean it up in the test (or an afterEach), or see https://github.com/Anime5hka/leavenotrace#ignoring`);
+    const how = hints(findings);
+    super(`this test left a trace:\n${format(findings)}\n\n${how ? `How to fix:\n${how}\n\n` : ''}Or ignore it on purpose: https://github.com/Anime5hka/leavenotrace#ignoring`);
     this.name = 'LeftATrace';
     this.findings = findings;
     // The stack would only point at this file; the useful locations are in the message.
@@ -422,12 +476,12 @@ function report(testName, findings, file) {
   if (process.env.LEAVENOTRACE_REPORT) {
     try {
       require('node:fs').appendFileSync(process.env.LEAVENOTRACE_REPORT,
-        `${JSON.stringify({ test: testName, file, findings })}\n`);
+        `${JSON.stringify({ test: testName, file, findings: findings.map((f) => ({ ...f, hint: hint(f) })) })}\n`);
     } catch {}
   }
   if (mode() === 'fail') throw new LeftATrace(findings);
   if (mode() === 'quiet') return;
-  process.stderr.write(`\n[leavenotrace] ${testName ? `"${testName}"` : 'a test'}${file ? ` (${file})` : ''} left a trace:\n${format(findings)}\n`);
+  process.stderr.write(`\n[leavenotrace] ${testName ? `"${testName}"` : 'a test'}${file ? ` (${file})` : ''} left a trace:\n${format(findings)}\n${hints(findings) ? `How to fix:\n${hints(findings)}\n` : ''}`);
 }
 
-module.exports = { start, finish, report, ignore, format, snapshot, diff, userSite, frameLocation, LeftATrace, mode };
+module.exports = { start, finish, report, ignore, format, hint, hints, setRunner, snapshot, diff, userSite, frameLocation, LeftATrace, mode };

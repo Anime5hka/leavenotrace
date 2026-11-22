@@ -126,6 +126,7 @@ export async function main(argv, { out = process.stdout, err = process.stderr, c
       const width = Math.min(30, Math.max(...r.findings.map((f) => f.label.length)));
       for (const f of r.findings) {
         out.write(`        ${c('bold', f.label.padEnd(width))}  ${f.what}${f.site ? c('gray', `  ${f.site}`) : ''}\n`);
+        if (f.hint) out.write(`        ${c('green', `↳ ${f.hint}`)}\n`);
       }
     }
   }

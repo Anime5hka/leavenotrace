@@ -3,6 +3,7 @@
 // Our afterEach must run after the test file's own top-level afterEach hooks, which are
 // registered later than this file. Once everything is registered we move ours to the end.
 const core = require('./core.cjs');
+core.setRunner('jest');
 const cwd = process.cwd();
 
 const check = () => {

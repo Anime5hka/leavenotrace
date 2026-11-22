@@ -74,3 +74,22 @@ test('userSite skips node internals and node_modules; direct mode requires a use
   assert.equal(core.userSite(stack, true), null);
   assert.equal(core.userSite(['Error', `    at g (${process.cwd()}/lib/app.js:7:1)`].join('\n'), true), 'lib/app.js:7');
 });
+
+test('hint(): a runner-specific fix for each kind of trace, none for the unknown', () => {
+  const h = (label, what, runner) => core.hint({ label, what }, runner);
+  assert.match(h('process.env.TZ', 'set to "UTC" (was unset)', 'vitest'), /vi\.stubEnv/);
+  assert.match(h('process.env.TZ', 'set to "UTC" (was unset)', 'jest'), /restore it in afterEach/);
+  assert.match(h('Date.now', 'replaced by a mock that was never restored', 'jest'), /restoreMocks: true/);
+  assert.match(h('Date.now', 'replaced by a mock that was never restored', 'node'), /mock\.restoreAll/);
+  assert.match(h('fs.readFile', 'replaced by a sinon stub (missing restore()?)', 'mocha'), /sinon\.restore/);
+  assert.match(h('fake timers', 'still installed', 'vitest'), /useRealTimers/);
+  assert.match(h('setInterval', 'still running (every 5 ms)'), /clearInterval/);
+  assert.match(h('Array.prototype.last', 'added (a function)'), /prototypes/);
+  assert.match(h('globalThis.cache', 'added (a Map)', 'node'), /delete globalThis\.cache/);
+  assert.equal(h('something.else', 'odd'), undefined);
+  const lines = core.hints([
+    { label: 'setInterval', what: 'still running' }, { label: 'setInterval', what: 'still running' },
+    { label: 'something.else', what: 'odd' },
+  ]);
+  assert.equal(lines.split('\n').length, 1, 'duplicate hints are merged, unknown ones skipped');
+});

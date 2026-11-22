@@ -25,9 +25,12 @@ leavenotrace catches the leak where it happens. Before each test it takes a snap
 FAIL  catalog.test.js > stock is checked every second
 LeftATrace: this test left a trace:
   setInterval  still running (every 1000 ms), created at shop.js:15 (from catalog.test.js:18)
+
+How to fix:
+  setInterval: keep the timer and clearInterval() it in afterEach, or have the code return a stop function
 ```
 
-No victim test needed, no bisection, no re-runs.
+No victim test needed, no bisection, no re-runs. Every trace comes with a fix for your runner: `vi.restoreAllMocks()` for vitest, `restoreMocks: true` for jest, `mock.restoreAll()` for node:test, `vi.stubEnv()` instead of assigning `process.env`, and so on.
 
 ## Quick start
 
@@ -72,7 +75,7 @@ Modes, set with the `LEAVENOTRACE` environment variable:
 | `warn` | Print the traces to stderr, keep the test results. A gentle way to start on a big suite. |
 | `quiet` | Only write the report file. |
 
-`LEAVENOTRACE_REPORT=traces.jsonl` also appends every finding as JSON lines (test, file, findings), for CI annotations or your own tooling.
+`LEAVENOTRACE_REPORT=traces.jsonl` also appends every finding as JSON lines (test, file, findings with label, what, site and hint), for CI annotations or your own tooling.
 
 ## What counts as a trace
 
@@ -140,7 +143,7 @@ The runners' own globals (vitest, jest, mocha, node:test internals, coverage cou
 
 - [ ] jsdom / happy-dom: DOM nodes left in `document.body`, `localStorage`, cookies, `window` listeners
 - [ ] Unhandled promise rejections and still-pending promises created by a test
-- [ ] `--fix` hints: the cleanup line to add (`vi.unstubAllEnvs()`, `clearInterval(...)`, `mock.restore()`)
+- [x] Fix hints for each trace, specific to the runner
 - [ ] A GitHub Action that annotates the leaky test lines in a PR
 
 ## See also

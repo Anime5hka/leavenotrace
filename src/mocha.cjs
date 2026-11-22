@@ -5,6 +5,7 @@
 // is printed as it is found, and one error at the end fails the run.
 const path = require('node:path');
 const core = require('./core.cjs');
+core.setRunner('mocha');
 const cwd = process.cwd();
 
 const leaky = [];
@@ -17,7 +18,7 @@ function check() {
   if (!findings.length) return;
   if (core.mode() === 'fail') {
     leaky.push(name);
-    process.stderr.write(`\n[leavenotrace] "${name}"${file ? ` (${file})` : ''} left a trace:\n${core.format(findings)}\n`);
+    process.stderr.write(`\n[leavenotrace] "${name}"${file ? ` (${file})` : ''} left a trace:\n${core.format(findings)}\n${core.hints(findings) ? `How to fix:\n${core.hints(findings)}\n` : ''}`);
     try { core.report(name, findings, file); } catch {}
   } else {
     core.report(name, findings, file);

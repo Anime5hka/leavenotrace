@@ -7,6 +7,7 @@ import { relative } from 'node:path';
 
 const require = createRequire(import.meta.url);
 const core = require('./core.cjs');
+core.setRunner('node');
 const nt = require('node:test');
 const cwd = process.cwd();
 
