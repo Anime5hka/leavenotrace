@@ -25,11 +25,15 @@ function check() {
   }
 }
 
+// Found by a marker, not by identity: tools that wrap the hooks (coverage, mutation testing) hand
+// mocha a different function object.
+check.leavenotrace = true;
+
 exports.mochaHooks = {
   beforeAll() {
     const hooks = this.test && this.test.parent && this.test.parent._afterEach;
     if (!Array.isArray(hooks)) return;
-    const i = hooks.findIndex((h) => h.fn === check);
+    const i = hooks.findIndex((h) => h.fn && h.fn.leavenotrace === true);
     if (i >= 0) hooks.push(...hooks.splice(i, 1));
   },
   beforeEach() { core.start(globalThis); },
