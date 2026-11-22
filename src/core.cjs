@@ -143,7 +143,7 @@ function show(v) {
   if (v === undefined) return 'undefined';
   if (typeof v === 'function') return v.name ? `function ${v.name}` : 'an anonymous function';
   if (typeof v === 'string') return JSON.stringify(v.length > 60 ? `${v.slice(0, 57)}...` : v);
-  if (v && typeof v === 'object') return v.constructor && v.constructor.name ? `a ${v.constructor.name}` : 'an object';
+  if (v && typeof v === 'object') return v.constructor && v.constructor.name ? `${/^[AEIOU]/.test(v.constructor.name) ? 'an' : 'a'} ${v.constructor.name}` : 'an object';
   return String(v);
 }
 

@@ -93,3 +93,14 @@ test('hint(): a runner-specific fix for each kind of trace, none for the unknown
   ]);
   assert.equal(lines.split('\n').length, 1, 'duplicate hints are merged, unknown ones skipped');
 });
+
+test('added objects are named with the right article', () => {
+  const a = core.snapshot(globalThis);
+  globalThis.__lntObj = {};
+  globalThis.__lntMap = new Map();
+  try {
+    const whats = core.diff(a, core.snapshot(globalThis)).map((f) => f.what);
+    assert.ok(whats.includes('added (an Object)'), whats.join('; '));
+    assert.ok(whats.includes('added (a Map)'), whats.join('; '));
+  } finally { delete globalThis.__lntObj; delete globalThis.__lntMap; }
+});
