@@ -226,9 +226,11 @@ function describeReplacement(a, b) {
 let current = null; // id of the running test
 const live = new Set();
 
-function track(kind, describe, alive, site) {
+// `handle` is unref'd once the leak is reported, so a leaked interval or server does not also
+// keep the test process from exiting (node --test and mocha would otherwise hang).
+function track(kind, describe, alive, site, handle) {
   if (current === null || !site) return;
-  live.add({ kind, describe, alive, site, test: current });
+  live.add({ kind, describe, alive, site, handle, test: current });
 }
 
 // Node's modules are shared by the whole process, but this file can be loaded more than once
@@ -252,7 +254,7 @@ function install(g) {
       const t = realSetTimeout.call(this, fn, ms, ...args);
       const site = here(true);
       if (site && t && typeof t === 'object') {
-        track('setTimeout', () => `still pending (a ${Number(ms) || 0} ms timeout)`, () => !t._destroyed, site);
+        track('setTimeout', () => `still pending (a ${Number(ms) || 0} ms timeout)`, () => !t._destroyed, site, t);
       }
       return t;
     };
@@ -264,7 +266,7 @@ function install(g) {
       const t = realSetInterval.call(this, fn, ms, ...args);
       const site = here(true);
       if (site && t && typeof t === 'object') {
-        track('setInterval', () => `still running (every ${Number(ms) || 0} ms)`, () => !t._destroyed, site);
+        track('setInterval', () => `still running (every ${Number(ms) || 0} ms)`, () => !t._destroyed, site, t);
       }
       return t;
     };
@@ -285,10 +287,20 @@ function installNode() {
     if (site && !this.__lntTracked) {
       this.__lntTracked = true;
       const server = this;
+      // Connections the server accepted keep the process alive too (an http server holds an
+      // idle one for ~90 s), so releasing the server releases them as well.
+      const conns = new Set();
+      let released = false;
+      server.on('connection', (socket) => {
+        if (released) { socket.unref(); return; }
+        conns.add(socket);
+        socket.once('close', () => conns.delete(socket));
+      });
+      const release = { unref() { released = true; server.unref(); for (const c of conns) c.unref(); } };
       track('server', () => {
         const a = safe(() => server.address());
         return `still listening${a && typeof a === 'object' ? ` on port ${a.port}` : a ? ` on ${a}` : ''}`;
-      }, () => server.listening, site);
+      }, () => server.listening, site, release);
     }
     return realListen.apply(this, args);
   };
@@ -302,7 +314,7 @@ function installNode() {
       track('socket', () => {
         const where = socket.remotePort ? ` to port ${socket.remotePort}` : '';
         return `still open${where}`;
-      }, () => !socket.destroyed, site);
+      }, () => !socket.destroyed, site, socket);
     }
     return realConnect.apply(this, args);
   };
@@ -313,7 +325,8 @@ function installNode() {
     const child = this;
     const site = here();
     track('child process', () => `still running (${child.spawnfile ?? ''}, pid ${child.pid})`,
-      () => child.exitCode === null && child.signalCode === null && !child.killed, site);
+      () => child.exitCode === null && child.signalCode === null && !child.killed, site,
+      { unref() { child.unref(); for (const s of child.stdio ?? []) s?.unref?.(); } });
     return r;
   };
   const fs = require('node:fs');
@@ -322,7 +335,7 @@ function installNode() {
     const w = realWatch.apply(this, args);
     let closed = false;
     w.once('close', () => { closed = true; });
-    track('fs.watch', () => `still watching ${show(String(args[0]))}`, () => !closed, here());
+    track('fs.watch', () => `still watching ${show(String(args[0]))}`, () => !closed, here(), w);
     return w;
   };
   const { syncBuiltinESMExports } = require('node:module');
@@ -356,13 +369,19 @@ function start(g) {
 function finish(g) {
   if (base === null) return [];
   const findings = diff(base, snapshot(g));
+  const handles = new Map();
   for (const r of live) {
-    if (r.test === current && safe(r.alive)) findings.push({ label: r.kind, what: r.describe(), site: r.site });
+    if (r.test !== current || !safe(r.alive)) continue;
+    const f = { label: r.kind, what: r.describe(), site: r.site };
+    findings.push(f);
+    handles.set(f, r.handle);
   }
   live.clear();
   base = null;
   current = null;
-  return findings.filter((f) => !ignored(f));
+  const kept = findings.filter((f) => !ignored(f));
+  for (const f of kept) safe(() => handles.get(f)?.unref?.());
+  return kept;
 }
 
 let extraIgnore = [];

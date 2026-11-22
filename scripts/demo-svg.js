@@ -5,7 +5,7 @@ import { main } from '../src/cli.js';
 const STATIC = process.argv.includes('--static');
 const cmd = ['node', '--test', '--test-isolation=none', "'examples/checkout/*.test.js'"];
 let text = '';
-await main(['--', 'node', '--test', '--test-isolation=none', '--test-force-exit', 'examples/checkout/*.test.js'],
+await main(['--', 'node', '--test', '--test-isolation=none', 'examples/checkout/*.test.js'],
   { out: { write: (s) => { text += s; } }, color: true });
 text = text.trimEnd().replace(/^.*\n\s*\n/, ''); // the header line repeats the command; we draw our own prompt
 

@@ -63,9 +63,9 @@ function blamed(reports) {
 
 const RUNNERS = {
   vitest: [bin('vitest'), ['run'], 'test/fixtures/vitest'],
-  jest: [bin('jest'), ['--forceExit'], 'test/fixtures/jest'],
+  jest: [bin('jest'), [], 'test/fixtures/jest'],
   mocha: [bin('mocha'), [], 'test/fixtures/mocha'],
-  'node:test': [process.execPath, ['--import', 'leavenotrace/node', '--test', '--test-force-exit', '--test-concurrency=1'], 'test/fixtures/node'],
+  'node:test': [process.execPath, ['--import', 'leavenotrace/node', '--test', '--test-concurrency=1'], 'test/fixtures/node'],
 };
 
 for (const [name, [cmd, args, cwd]] of Object.entries(RUNNERS)) {
