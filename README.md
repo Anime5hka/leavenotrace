@@ -32,6 +32,16 @@ How to fix:
 
 No victim test needed, no bisection, no re-runs. Every trace comes with a fix for your runner: `vi.restoreAllMocks()` for vitest, `restoreMocks: true` for jest, `mock.restoreAll()` for node:test, `vi.stubEnv()` instead of assigning `process.env`, and so on.
 
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#setup">Setup</a> ·
+  <a href="#what-counts-as-a-trace">What counts as a trace</a> ·
+  <a href="#how-it-compares">How it compares</a> ·
+  <a href="#ignoring">Ignoring</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#faq">FAQ</a>
+</p>
+
 ## Quick start
 
 See what your suite leaves behind, without changing anything:
@@ -100,6 +110,18 @@ Timers, servers, sockets and child processes are traced back to the code that cr
 A leaked interval or server keeps Node running after the last test: `node --test` and mocha wait forever, and jest prints "Jest did not exit one second after the test run has completed". The usual fix is `--forceExit`, which hides the leak.
 
 Once leavenotrace has reported a leaked timer, server (with its open connections), socket or child process, it `unref()`s it, so the process can exit normally. You get the name and line of the leak instead of a hang.
+
+## How it compares
+
+| | Catches the leak in the test that caused it | Without a failing victim | Env, globals, mocks, prototypes | Timers, servers, sockets | Line that created it |
+|---|:-:|:-:|:-:|:-:|:-:|
+| Bisecting for the polluter ([find-polluter](https://www.npmjs.com/package/find-polluter) and similar scripts) | ✅ after many runs | ❌ | ✅ any kind | ✅ any kind | ❌ |
+| Shuffling test order (`vitest --sequence.shuffle`, `jest --randomize`) | ❌ | ❌ | – | – | ❌ |
+| `jest --detectOpenHandles`, [why-is-node-running](https://github.com/mafintosh/why-is-node-running) | ❌ at the end of the run | ✅ | ❌ | ✅ | ✅ |
+| vitest `unstubEnvs` / `restoreMocks`, jest `restoreMocks` | prevents, doesn't detect | ✅ | only what goes through `vi.stubEnv` / `vi.spyOn` | ❌ | – |
+| **leavenotrace** | ✅ in one run | ✅ | ✅ | ✅ | ✅ |
+
+Bisection still wins for state leavenotrace can't see, like a module-level cache (see [Caveats](#caveats)).
 
 ## Ignoring
 
