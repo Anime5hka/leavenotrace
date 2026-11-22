@@ -20,9 +20,9 @@ Works out of the box with node --test and mocha. For vitest and jest, add one li
 your config instead (see https://github.com/Anime5hka/leavenotrace#setup).
 
 Examples:
-  npx leavenotrace -- node --test
-  npx leavenotrace -- npx mocha
-  npx leavenotrace -- npm test`;
+  npx github:Anime5hka/leavenotrace -- node --test
+  npx github:Anime5hka/leavenotrace -- npx mocha
+  npx github:Anime5hka/leavenotrace -- npm test`;
 
 export function parseArgs(argv) {
   const dash = argv.indexOf('--');
