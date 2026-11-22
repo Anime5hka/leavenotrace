@@ -172,6 +172,8 @@ The runners' own globals (vitest, jest, mocha, node:test internals, coverage cou
 
 [shakeout](https://github.com/Anime5hka/shakeout) finds flaky tests caused by timing. [raceloom](https://github.com/Anime5hka/raceloom) and [sqlloom](https://github.com/Anime5hka/sqlloom) find race conditions in async code and SQL transactions.
 
+[rubberstamp](https://github.com/Anime5hka/rubberstamp) finds the functions your tests call but never check.
+
 ## License
 
 [MIT](LICENSE)
