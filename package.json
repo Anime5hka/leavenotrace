@@ -8,6 +8,9 @@
   "engines": {
     "node": ">=20.6"
   },
+  "bin": {
+    "leavenotrace": "bin/leavenotrace.js"
+  },
   "exports": {
     ".": "./src/core.cjs",
     "./vitest": "./src/vitest.js",
@@ -17,6 +20,7 @@
     "./package.json": "./package.json"
   },
   "files": [
+    "bin",
     "src"
   ],
   "scripts": {
