@@ -8,6 +8,7 @@ import { relative } from 'node:path';
 const require = createRequire(import.meta.url);
 const core = require('./core.cjs');
 const nt = require('node:test');
+const cwd = process.cwd();
 
 // `node --test` without isolation=none is only an orchestrator: tests run in child processes.
 const orchestrator = process.execArgv.some((a) => a === '--test' || a.startsWith('--test=')) &&
@@ -18,7 +19,7 @@ if (!orchestrator && !globalThis.__leavenotraceNode) {
   let depth = 0;
   let lastRoot = null;
   const check = (t) => {
-    const file = process.argv[1] ? relative(process.cwd(), process.argv[1]) : undefined;
+    const file = process.argv[1] ? relative(cwd, process.argv[1]) : undefined;
     core.report(t?.fullName ?? t?.name, core.finish(globalThis), file);
   };
   const realAfterEach = nt.afterEach;

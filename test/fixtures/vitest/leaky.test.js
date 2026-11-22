@@ -20,7 +20,7 @@ test('socket', async () => {
   const s = createServer(); await new Promise((r) => s.listen(0, '127.0.0.1', r)); s.unref();
   await new Promise((r) => connect(s.address().port, '127.0.0.1', r));
 });
-test('child process', () => { spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)']); });
+test('child process', () => { spawn(process.execPath, ['-e', 'setTimeout(() => {}, 3000)']); });
 test('spy', () => { vi.spyOn(fs, 'readFileSync'); });
 test('fake timers', () => { vi.useFakeTimers(); });
 test('global', () => { globalThis.cache = new Map(); });

@@ -174,14 +174,14 @@ function diff(before, after) {
 
 // Fake timers (@sinonjs/fake-timers, used by vitest and jest) replace Date, timers, performance,
 // Intl.DateTimeFormat and process.hrtime all at once. One finding says it better than eighty.
-const FAKED = /^(globalThis\.(Date|Intl|performance|setTimeout|clearTimeout|setInterval|clearInterval|setImmediate|clearImmediate|queueMicrotask|requestAnimationFrame|cancelAnimationFrame|requestIdleCallback|cancelIdleCallback)$|(Date|Intl|performance)(\.|\[)|Date\.prototype|process\.(hrtime|nextTick|uptime)$)/;
+const FAKED = /^(globalThis\.(Date|Intl|performance|setTimeout|clearTimeout|setInterval|clearInterval|setImmediate|clearImmediate|queueMicrotask|requestAnimationFrame|cancelAnimationFrame|requestIdleCallback|cancelIdleCallback)$|(Date|Intl|performance)(\.|\[)|Date\.prototype|timers\.|process\.(hrtime|nextTick|uptime)$)/;
 function collapseFakeTimers(after, findings) {
   const date = after.props.get('globalThis.Date')?.value;
   const timeout = after.props.get('globalThis.setTimeout')?.value;
-  const fake = (date && date.isFake === true) || (timeout && (timeout.clock || timeout._isMockFunction === undefined && /^fake/i.test(timeout.name)));
+  const fake = (date && (date.isFake === true || date.isMock === true)) || (timeout && (timeout.clock || timeout._isMockFunction === undefined && /^fake/i.test(timeout.name)));
   if (!fake || !findings.some((f) => FAKED.test(f.label))) return findings;
   return [
-    { label: 'fake timers', what: 'still installed (useFakeTimers() without useRealTimers())' },
+    { label: 'fake timers', what: 'still installed (fake timers were turned on and never turned off)' },
     ...findings.filter((f) => !FAKED.test(f.label)),
   ];
 }

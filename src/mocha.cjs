@@ -5,13 +5,14 @@
 // is printed as it is found, and one error at the end fails the run.
 const path = require('node:path');
 const core = require('./core.cjs');
+const cwd = process.cwd();
 
 const leaky = [];
 
 function check() {
   const t = this.currentTest;
   const name = t && t.fullTitle();
-  const file = t && t.file && path.relative(process.cwd(), t.file);
+  const file = t && t.file && path.relative(cwd, t.file);
   const findings = core.finish(globalThis);
   if (!findings.length) return;
   if (core.mode() === 'fail') {

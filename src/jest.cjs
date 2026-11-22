@@ -3,10 +3,11 @@
 // Our afterEach must run after the test file's own top-level afterEach hooks, which are
 // registered later than this file. Once everything is registered we move ours to the end.
 const core = require('./core.cjs');
+const cwd = process.cwd();
 
 const check = () => {
   const state = expect.getState();
-  core.report(state.currentTestName, core.finish(globalThis), state.testPath && require('node:path').relative(process.cwd(), state.testPath));
+  core.report(state.currentTestName, core.finish(globalThis), state.testPath && require('node:path').relative(cwd, state.testPath));
 };
 
 beforeEach(() => { core.start(globalThis); });
